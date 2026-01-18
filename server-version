@@ -133,22 +133,4 @@ while True:
         except Exception as e:
             print(f"Feed-Fehler bei {feed_url}: {e}")
 
-    # ────────────────────────────────────────────────
-    # Sende Statusmeldung, falls keine Treffer gefunden
-    # ────────────────────────────────────────────────
-    if not found_in_cycle:
-        status_meldung = (
-            f"Status-Check ({jetzt})\n\n"
-            f"Keine neuen Artikel mit:\n"
-            f"{', '.join(SUCHWOERTER)}"
-        )
-
-        sende_ntfy(
-            "20min Watcher: keine Treffer",
-            status_meldung,
-            priority="low"
-        )
-
-        print("→ Keine Treffer – Statusmeldung gesendet")
-
     time.sleep(INTERVAL)

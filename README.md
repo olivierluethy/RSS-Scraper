@@ -1,5 +1,8 @@
 # RSS-Scraper
 
+[![CI](https://github.com/olivierluethy/RSS-Scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/olivierluethy/RSS-Scraper/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A lightweight **RSS keyword watcher for Swiss news outlets**. It continuously polls a
 curated list of Swiss news feeds, scans the latest headlines for one or more
 keywords, and delivers an instant **push notification** via
@@ -180,6 +183,4 @@ improvements and issue reports are welcome via [GitHub Issues](../../issues).
 
 ## License
 
-No license file is currently included. Until one is added, all rights are reserved
-by the repository owner. If you intend to reuse this code, please open an issue to
-request clarification.
+Released under the [MIT License](LICENSE) © 2026 Olivier Luethy.

@@ -1,0 +1,37 @@
+# systemd unit for the RSS watcher (issue #8).
+#
+# Install:
+#   sudo cp deploy/rss-watcher.service /etc/systemd/system/
+#   sudo mkdir -p /opt/rss-watcher && sudo cp -r rss_watcher config.yaml /opt/rss-watcher/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now rss-watcher
+#
+# Follow logs with: journalctl -u rss-watcher -f
+
+[Unit]
+Description=RSS keyword watcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/rss-watcher
+# Adjust User/Group to a non-root account that owns /opt/rss-watcher.
+User=rss-watcher
+Group=rss-watcher
+# Secrets can live here instead of in the committed config.
+Environment=RSS_WATCHER_CONFIG=/opt/rss-watcher/config.yaml
+# EnvironmentFile=/opt/rss-watcher/.env
+ExecStart=/usr/bin/python3 -m rss_watcher --config /opt/rss-watcher/config.yaml
+Restart=always
+RestartSec=10
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/rss-watcher
+
+[Install]
+WantedBy=multi-user.target

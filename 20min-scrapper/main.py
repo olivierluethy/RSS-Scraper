@@ -1,136 +1,29 @@
 # -*- coding: utf-8 -*-
-import feedparser
-import time
-import datetime
-import requests
+"""Deployment launcher for the Passenger/cPanel snapshot.
 
-# ────────────────────────────────────────────────
-#          KONFIGURATION – HIER ANPASSEN!
-# ────────────────────────────────────────────────
+Formerly a third hardcoded copy of the watcher; now a thin launcher over the
+single-source ``rss_watcher`` package (issue #6). The secret ntfy topic is no
+longer embedded here (issue #3) — configure it via ``config.yaml`` or the
+``NTFY_TOPIC`` environment variable.
 
-NTFY_SERVER = "https://ntfy.sh"
-NTFY_TOPIC  = "derek-sparen-spalter-alert-xyz-gradunal-k3f9x2p7q-k3f9x2p7q"
+For serving under Passenger, see ``passenger_wsgi.py`` (issue #1); this module
+is the plain long-running-worker entrypoint.
+"""
 
-INTERVAL = 240  # 4 Minuten
-SUCHWOERTER = ["helvetus", "stralium"]  # Case-insensitive Suche
+import os
+import sys
 
-FEEDS = [
-    ## RSS Feeds von 20minuten.ch
-    "https://partner-feeds.20min.ch/rss/20minuten/",
-    "https://partner-feeds.20min.ch/rss/20minuten/schweiz",
-    "https://partner-feeds.20min.ch/rss/20minuten/schweiz/wirtschaft",
-    "https://partner-feeds.20min.ch/rss/20minuten/schweiz/politik",
-    "https://partner-feeds.20min.ch/rss/20minuten/schweiz/finanzen",
-    ## RSS Feeds von Blick.ch
-    "https://www.blick.ch/schweiz/rss.xml",
-    "https://www.blick.ch/rss.xml",
-    "https://www.blick.ch/wirtschaft/rss.xml",
-    "https://www.blick.ch/people-tv/rss.xml",
-    "https://www.blick.ch/ausland/rss.xml",
-    "https://www.blick.ch/wirtschaft/rss.xml",
-    "https://www.blick.ch/politik/rss.xml",
-    "https://www.blick.ch/sport/rss.xml",
-    ## RSS Feeds von Luzerner Zeitung
-    "https://www.luzernerzeitung.ch/zentralschweiz.rss",
-    "https://www.luzernerzeitung.ch/zentralschweiz/luzern.rss",
-    "https://www.luzernerzeitung.ch/schweiz.rss",
-    "https://www.luzernerzeitung.ch/international.rss",
-    "https://www.luzernerzeitung.ch/wirtschaft.rss",
-    "https://www.luzernerzeitung.ch/leben/ratgeber.rss",
-    "https://www.luzernerzeitung.ch/meinung/leserbriefe.rss",
-    "https://www.luzernerzeitung.ch/meinung/kommentare.rss",
-    ## RSS Feeds von NZZ
-    "https://www.nzz.ch/startseite.rss",
-    "https://www.nzz.ch/schweiz.rss",
-    "https://www.nzz.ch/wirtschaft.rss",
-    "https://www.nzz.ch/international.rss",
-    "https://www.nzz.ch/recent.rss",
-    ## RSS Feeds von Tagesanzeiger
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/front",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/schweiz",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/wirtschaft",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/wirtschaft/recht-und-konsum",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/sonntagszeitung",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/panorama/vermischtes",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/ausland",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/ausland/europa",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/wirtschaft-news",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/news-heute",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/aktuell",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/wirtschaft/kurzmeldungen-wirtschaft",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/podcast/unter-verdacht",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/news",
-    "https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/news-uebersicht",
-]
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.dirname(_HERE)
+for path in (_REPO_ROOT, _HERE):
+    if path not in sys.path:
+        sys.path.insert(0, path)
 
-gesehen = set()
+from rss_watcher.watcher import main
 
-# ────────────────────────────────────────────────
-#        Funktion zum Senden an ntfy
-# ────────────────────────────────────────────────
-
-def sende_ntfy(titel, text, priority="default"):
-    headers = {
-        "Title": titel,
-        "Priority": priority,
-    }
-    try:
-        r = requests.post(
-            f"{NTFY_SERVER}/{NTFY_TOPIC}",
-            data=text.encode("utf-8"),
-            headers=headers,
-            timeout=10
-        )
-        if r.status_code not in (200, 201):
-            print(f"ntfy Fehler: HTTP {r.status_code} – {r.text}")
-    except Exception as e:
-        print(f"ntfy Sende-Fehler: {e}")
-
-# ────────────────────────────────────────────────
-#                 Watcher starten
-# ────────────────────────────────────────────────
-
-print("20min Watcher gestartet\n")
-print(f"Suche nach: {', '.join(SUCHWOERTER)} (case-insensitive)")
-print(f"ntfy-Benachrichtigungen an Topic: {NTFY_TOPIC}")
-print(f"Server: {NTFY_SERVER}\n")
-
-while True:
-    found_in_cycle = False
-    jetzt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    for feed_url in FEEDS:
-        try:
-            feed = feedparser.parse(feed_url)
-
-            for entry in feed.entries[:15]:  # nur die neuesten 15 Einträge
-                title_lower = entry.title.lower()
-                link = entry.get("link", "Kein Link")
-
-                # ✅ Case-insensitive Suche
-                if any(w.lower() in title_lower for w in SUCHWOERTER) and link not in gesehen:
-                    found_in_cycle = True
-
-                    meldung = (
-                        f"NEUER ARTIKEL auf 20min!\n\n"
-                        f"{entry.title.strip()}\n\n"
-                        f"{link}\n\n"
-                        f"({jetzt})"
-                    )
-
-                    print("\n" + "═" * 80)
-                    print(meldung)
-                    print("═" * 80 + "\n")
-
-                    sende_ntfy(
-                        "20min Alert: Helvetus / Stralium",
-                        meldung,
-                        priority="high"
-                    )
-
-                    gesehen.add(link)
-
-        except Exception as e:
-            print(f"Feed-Fehler bei {feed_url}: {e}")
-
-    time.sleep(INTERVAL)
+if __name__ == "__main__":
+    argv = sys.argv[1:]
+    if "--config" not in argv and "-c" not in argv:
+        default_cfg = os.environ.get("RSS_WATCHER_CONFIG", os.path.join(_HERE, "config.yaml"))
+        argv = ["--config", default_cfg] + argv
+    raise SystemExit(main(argv))

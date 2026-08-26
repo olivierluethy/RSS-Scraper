@@ -1,0 +1,18 @@
+services:
+  rss-watcher:
+    build: .
+    image: rss-watcher:latest
+    restart: unless-stopped
+    environment:
+      # Provide secrets here or in an .env file next to this compose file.
+      - NTFY_TOPIC=${NTFY_TOPIC:-}
+      - NTFY_SERVER=${NTFY_SERVER:-https://ntfy.sh}
+    volumes:
+      # Your real configuration (copied from config.example.yaml).
+      - ./config.yaml:/app/config.yaml:ro
+      # Persistent de-dup store (issues #2, #7). Point storage.path at /data.
+      - watcher-data:/data
+    command: ["--config", "/app/config.yaml"]
+
+volumes:
+  watcher-data:

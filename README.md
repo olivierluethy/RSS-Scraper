@@ -1,5 +1,8 @@
 # RSS-Scraper
 
+[![CI](https://github.com/olivierluethy/RSS-Scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/olivierluethy/RSS-Scraper/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A lightweight **RSS keyword watcher for Swiss news outlets**. It continuously polls a
 curated list of Swiss news feeds, scans the latest headlines for one or more
 keywords, and delivers an instant **push notification** via
@@ -14,12 +17,17 @@ fully configurable for any topic.
 ## Features
 
 - 📰 **Multi-source polling** — watches ~50 RSS feeds across 5 major Swiss publishers.
-- 🔎 **Case-insensitive keyword matching** on article titles.
-- 🔔 **Instant push notifications** through ntfy (phone, desktop, or self-hosted server).
-- 🧠 **De-duplication** — each article link is only reported once per run.
-- ⏱️ **Configurable polling interval** (default: every 4 minutes).
-- 🪶 **Minimal dependencies** — pure Python, three small libraries.
-- 🖥️ **Two deployment modes** — run locally as a script, or keep it alive on a server.
+- 🔎 **Flexible keyword matching** — substring, whole-word, or regex, over the
+  title, summary, and/or category fields, with per-keyword priority.
+- 🔔 **Pluggable notifications** — ntfy, e-mail (SMTP), Telegram, Slack, Discord;
+  route to one backend or several at once.
+- 🧠 **Persistent de-duplication** — reported links are stored in SQLite and
+  survive restarts, so no duplicate alerts after a crash or deploy.
+- ⚡ **Fast, polite fetching** — feeds are fetched concurrently with per-feed
+  timeouts and conditional GETs (ETag / Last-Modified) to skip unchanged feeds.
+- 🔐 **Externalised config** — one YAML file (plus env-var overrides); secrets
+  like the ntfy topic stay out of source.
+- 🖥️ **First-class deployment** — CLI, systemd unit, Docker/Compose, or Passenger WSGI.
 
 ---
 
@@ -40,51 +48,70 @@ fully configurable for any topic.
 
 On each cycle the scraper:
 
-1. Fetches every feed in `FEEDS` and reads the newest 15 entries.
-2. Lower-cases each headline and checks it against the keywords in `SUCHWOERTER`.
-3. On a new match (a link not seen before this run), sends a high-priority ntfy
-   notification containing the headline, link, and timestamp.
-4. Sleeps for `INTERVAL` seconds and repeats.
+1. Fetches every feed concurrently (with timeouts and conditional GETs) and reads
+   the newest `max_entries` entries of each.
+2. Matches the configured keywords against the chosen fields (title/summary/category).
+3. On a new match — a link not already in the persistent seen-store — sends a
+   notification (to every configured backend) with the headline, link, and timestamp.
+4. Records the link so it's never re-sent, then sleeps for `interval` seconds and repeats.
 
 ---
 
 ## Repository structure
 
+The watcher now lives in a single package (`rss_watcher/`) — the one source of
+truth. The scripts at the repo root are thin launchers that select a config profile.
+
 | Path | Description |
 |------|-------------|
-| `server-version` | Full watcher with the complete ~50-feed list. Silent unless a match is found — ideal for long-running server deployments. |
-| `standalone-version` | Slimmer variant with a 5-feed starter list. Also sends a low-priority **"no hits" status ping** every cycle, so you always know it's alive. |
-| `20min-scrapper/` | Snapshot of the live server deployment (Passenger/cPanel), including `main.py` (identical to `server-version`), the `passenger_wsgi.py` wrapper, and runtime folders. |
+| `rss_watcher/` | The watcher package: config, fetching, matching, storage, notifier backends, and the WSGI health app. Run with `python -m rss_watcher --config config.yaml`. |
+| `config.example.yaml` | Full configuration reference (~50-feed list). Copy to `config.yaml` and edit. |
+| `config.standalone.example.yaml` | Slim 5-feed profile that also sends a low-priority **"no hits" status ping** each cycle. |
+| `server-version` | Thin launcher defaulting to `config.yaml`. |
+| `standalone-version` | Thin launcher defaulting to `config.standalone.yaml`. |
+| `20min-scrapper/` | Passenger/cPanel deployment: `main.py` (worker launcher) and `passenger_wsgi.py` (a real WSGI health endpoint that runs the poller in a background thread). |
+| `deploy/rss-watcher.service` | systemd unit (`Restart=always`, journald logging). |
+| `Dockerfile`, `docker-compose.yml` | Container deployment. |
 
 ---
 
 ## Requirements
 
-- Python **3.8+**
+- Python **3.9+**
 - Dependencies:
   ```bash
-  pip install feedparser requests
+  pip install -r requirements.txt   # feedparser, requests, PyYAML
   ```
 
 ---
 
 ## Configuration
 
-All settings live at the top of the script (`server-version` / `standalone-version` /
-`20min-scrapper/main.py`):
+All settings live in a YAML file. Copy the example and edit it — the real file is
+git-ignored so secrets never get committed:
 
-| Setting | Meaning | Default |
-|---------|---------|---------|
-| `NTFY_SERVER` | ntfy base URL | `https://ntfy.sh` |
-| `NTFY_TOPIC`  | Your **private** ntfy topic (treat like a secret) | *(set your own)* |
-| `INTERVAL`    | Seconds between polling cycles | `240` (4 min) |
-| `SUCHWOERTER` | List of keywords to match (case-insensitive) | `["helvetus", "stralium"]` |
-| `FEEDS`       | List of RSS feed URLs to watch | ~50 Swiss feeds |
+```bash
+cp config.example.yaml config.yaml
+```
 
-> ⚠️ **Security note:** the ntfy topic acts as a shared secret — anyone who knows it
-> can read your alerts or post to it. Pick a long, random topic name and avoid
-> committing real values (see the [roadmap](#roadmap) for moving config to
-> environment variables).
+Any value may reference an environment variable with `${VAR}` or `${VAR:-default}`.
+A few settings can also be overridden directly via env vars: `NTFY_TOPIC`,
+`NTFY_SERVER`, `INTERVAL`, `SUCHWOERTER` (comma-separated), `RSS_FEEDS`.
+
+Key sections (see `config.example.yaml` for the full reference):
+
+| Section | Meaning |
+|---------|---------|
+| `interval` / `max_entries` | Seconds between cycles; newest entries scanned per feed. |
+| `fetch` | Connect/read timeouts, concurrency, conditional-GET toggle. |
+| `matching` | `fields` (title/summary/category), `mode` (substring/word/regex), `case_sensitive`, and `keywords` (plain strings or per-keyword `{text, mode, priority, fields}`). |
+| `storage` | SQLite `path` and `ttl_days` for the persistent seen-store. |
+| `notifiers` | One or more backends: `ntfy`, `email`, `telegram`, `slack`, `discord`. |
+| `feeds` | List of RSS feed URLs (auto de-duplicated). |
+
+> ⚠️ **Security note:** the ntfy topic acts as a shared secret. Keep it in
+> `config.yaml` / an env var (never in git), and **rotate** any topic that was
+> previously committed to history.
 
 ---
 
@@ -93,25 +120,40 @@ All settings live at the top of the script (`server-version` / `standalone-versi
 ### 1. Get a notification channel
 
 Install the **ntfy** app on your phone (iOS/Android) or use the web app, then
-subscribe to the same topic string you set in `NTFY_TOPIC`.
+subscribe to the same topic string you set as `NTFY_TOPIC`.
 
-### 2. Run locally (standalone)
-
-```bash
-pip install feedparser requests
-python standalone-version
-```
-
-### 3. Run on a server (keep-alive)
+### 2. Run locally
 
 ```bash
-# start in the background, surviving logout
-nohup python server-version > watcher.log 2>&1 &
+pip install -r requirements.txt
+cp config.standalone.example.yaml config.standalone.yaml   # edit keywords/feeds
+NTFY_TOPIC=your-private-topic python -m rss_watcher --config config.standalone.yaml
 ```
 
-Check it's running with `ps aux | grep server-version`, and stop it with `kill <pid>`.
-For a more robust setup, run it under **systemd**, **supervisor**, or **tmux/screen**
-(see the [roadmap](#roadmap)).
+Add `--once` to run a single cycle and exit (handy for testing or cron).
+
+### 3. Run on a server
+
+**systemd (recommended):**
+
+```bash
+sudo cp deploy/rss-watcher.service /etc/systemd/system/
+sudo mkdir -p /opt/rss-watcher
+sudo cp -r rss_watcher config.yaml /opt/rss-watcher/
+sudo systemctl daemon-reload && sudo systemctl enable --now rss-watcher
+journalctl -u rss-watcher -f
+```
+
+**Docker / Compose:**
+
+```bash
+cp config.example.yaml config.yaml            # edit it
+export NTFY_TOPIC=your-private-topic
+docker compose up -d --build
+```
+
+**Passenger / cPanel:** point the app at `20min-scrapper/passenger_wsgi.py`; it
+runs the poller in a background thread and serves a JSON health endpoint.
 
 ---
 
@@ -133,20 +175,12 @@ https://www.20min.ch/story/…
 
 ## Roadmap
 
-Planned improvements are tracked as [GitHub Issues](../../issues) and grouped into
-**features**, **bugs**, and **performance**. Highlights:
-
-- Move configuration & secrets to environment variables / a config file.
-- Persist the "seen articles" set across restarts.
-- Fetch feeds concurrently and use conditional GETs (ETag / Last-Modified).
-- Ship a proper service definition (systemd / Docker) instead of `nohup`.
-
-Contributions and issue reports are welcome.
+The initial roadmap — externalised config, persistent de-dup, concurrent +
+conditional fetching, and proper service definitions — has now landed. Further
+improvements and issue reports are welcome via [GitHub Issues](../../issues).
 
 ---
 
 ## License
 
-No license file is currently included. Until one is added, all rights are reserved
-by the repository owner. If you intend to reuse this code, please open an issue to
-request clarification.
+Released under the [MIT License](LICENSE) © 2026 Olivier Luethy.

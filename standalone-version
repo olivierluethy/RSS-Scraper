@@ -1,112 +1,27 @@
-import feedparser
-import time
-import datetime
-import requests
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""Standalone profile launcher.
 
-# ────────────────────────────────────────────────
-#          KONFIGURATION – HIER ANPASSEN!
-# ────────────────────────────────────────────────
+A thin launcher over the single-source ``rss_watcher`` package (issue #6) that
+defaults to the slim standalone config (5 feeds + a "still alive" status ping):
 
-NTFY_SERVER = "https://ntfy.sh"
-NTFY_TOPIC  = "derek-sparen-spalter-alert-xyz-gradunal-k3f9x2p7q-k3f9x2p7q"
+    cp config.standalone.example.yaml config.standalone.yaml   # then edit
+    NTFY_TOPIC=... python standalone-version
 
-INTERVAL = 240  # 4 Minuten
-SUCHWOERTER = ["helvetus", "stralium"]  # Case-insensitive Suche
+Override the config path with ``--config PATH``.
+"""
 
-FEEDS = [
-    "https://partner-feeds.20min.ch/rss/20minuten/",
-    "https://partner-feeds.20min.ch/rss/20minuten/schweiz",
-    "https://partner-feeds.20min.ch/rss/20minuten/schweiz/wirtschaft",
-    "https://partner-feeds.20min.ch/rss/20minuten/schweiz/politik",
-    "https://partner-feeds.20min.ch/rss/20minuten/schweiz/finanzen",
-]
+import os
+import sys
 
-gesehen = set()
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 
-# ────────────────────────────────────────────────
-#        Funktion zum Senden an ntfy
-# ────────────────────────────────────────────────
+from rss_watcher.watcher import main
 
-def sende_ntfy(titel, text, priority="default"):
-    headers = {
-        "Title": titel,
-        "Priority": priority,
-    }
-    try:
-        r = requests.post(
-            f"{NTFY_SERVER}/{NTFY_TOPIC}",
-            data=text.encode("utf-8"),
-            headers=headers,
-            timeout=10
-        )
-        if r.status_code not in (200, 201):
-            print(f"ntfy Fehler: HTTP {r.status_code} – {r.text}")
-    except Exception as e:
-        print(f"ntfy Sende-Fehler: {e}")
-
-# ────────────────────────────────────────────────
-#                 Watcher starten
-# ────────────────────────────────────────────────
-
-print("20min Watcher gestartet\n")
-print(f"Suche nach: {', '.join(SUCHWOERTER)} (case-insensitive)")
-print(f"ntfy-Benachrichtigungen an Topic: {NTFY_TOPIC}")
-print(f"Server: {NTFY_SERVER}\n")
-
-while True:
-    found_in_cycle = False
-    jetzt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-    for feed_url in FEEDS:
-        try:
-            feed = feedparser.parse(feed_url)
-
-            for entry in feed.entries[:15]:  # nur die neuesten 15 Einträge
-                title_lower = entry.title.lower()
-                link = entry.get("link", "Kein Link")
-
-                # ✅ Case-insensitive Suche
-                if any(w.lower() in title_lower for w in SUCHWOERTER) and link not in gesehen:
-                    found_in_cycle = True
-
-                    meldung = (
-                        f"NEUER ARTIKEL auf 20min!\n\n"
-                        f"{entry.title.strip()}\n\n"
-                        f"{link}\n\n"
-                        f"({jetzt})"
-                    )
-
-                    print("\n" + "═" * 80)
-                    print(meldung)
-                    print("═" * 80 + "\n")
-
-                    sende_ntfy(
-                        "20min Alert: Helvetus / Stralium",
-                        meldung,
-                        priority="high"
-                    )
-
-                    gesehen.add(link)
-
-        except Exception as e:
-            print(f"Feed-Fehler bei {feed_url}: {e}")
-
-    # ────────────────────────────────────────────────
-    # Sende Statusmeldung, falls keine Treffer gefunden
-    # ────────────────────────────────────────────────
-    if not found_in_cycle:
-        status_meldung = (
-            f"Status-Check ({jetzt})\n\n"
-            f"Keine neuen Artikel mit:\n"
-            f"{', '.join(SUCHWOERTER)}"
-        )
-
-        sende_ntfy(
-            "20min Watcher: keine Treffer",
-            status_meldung,
-            priority="low"
-        )
-
-        print("→ Keine Treffer – Statusmeldung gesendet")
-
-    time.sleep(INTERVAL)
+if __name__ == "__main__":
+    argv = sys.argv[1:]
+    if "--config" not in argv and "-c" not in argv:
+        argv = ["--config", os.path.join(_HERE, "config.standalone.yaml")] + argv
+    raise SystemExit(main(argv))

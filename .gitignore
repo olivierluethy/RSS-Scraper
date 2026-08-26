@@ -1,0 +1,24 @@
+# Secrets / local configuration (issue #3) — never commit real topics/tokens.
+.env
+config.yaml
+config.*.yaml
+!config.example.yaml
+!config.*.example.yaml
+
+# Persistent de-dup store (issues #2, #7)
+*.sqlite3
+*.sqlite3-journal
+seen.json
+
+# Logs
+*.log
+20min-scrapper/watcher.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/

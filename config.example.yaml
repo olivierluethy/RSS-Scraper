@@ -1,0 +1,117 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  RSS Watcher — configuration reference
+#
+#  Copy this file to `config.yaml` (which is git-ignored) and edit it, then run:
+#      python -m rss_watcher --config config.yaml
+#
+#  Any value may reference an environment variable with ${VAR} or ${VAR:-default},
+#  so secrets never have to be committed. A few settings can also be overridden
+#  directly via env vars: NTFY_TOPIC, NTFY_SERVER, INTERVAL,
+#  SUCHWOERTER (comma-separated), RSS_FEEDS (comma-separated).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Seconds between polling cycles.
+interval: 240
+
+# Newest entries per feed to scan each cycle.
+max_entries: 15
+
+# Send a low-priority "still alive, no hits" ping when a cycle finds nothing.
+status_ping: false
+
+fetch:
+  connect_timeout: 5      # seconds to establish a connection (issue #13)
+  read_timeout: 10        # seconds to read the response (issue #13)
+  concurrency: 10         # feeds fetched in parallel (issue #11)
+  conditional_get: true   # skip unchanged feeds via ETag/Last-Modified (issue #12)
+
+matching:
+  # Fields to search: any of title, summary, category.
+  fields: [title]
+  # Default match mode: substring | word | regex.
+  mode: substring
+  case_sensitive: false
+  # Keywords may be plain strings, or mappings with per-keyword overrides:
+  #   - text: helvetus
+  #     mode: word          # avoid matching inside a larger word
+  #     priority: urgent     # per-keyword notification priority
+  #     fields: [title, summary]
+  keywords:
+    - helvetus
+    - stralium
+
+storage:
+  path: seen.sqlite3        # persistent de-dup store (issues #2, #7)
+  ttl_days: 30              # expire entries older than N days to bound size
+
+# One or more notification backends; alerts fan out to all of them (issue #10).
+notifiers:
+  - type: ntfy
+    server: https://ntfy.sh
+    topic: ${NTFY_TOPIC}    # keep the topic out of source (issue #3)
+    default_priority: high
+
+  # - type: email
+  #   smtp_host: smtp.example.com
+  #   smtp_port: 587
+  #   from: alerts@example.com
+  #   to: [me@example.com]
+  #   username: ${SMTP_USER}
+  #   password: ${SMTP_PASS}
+
+  # - type: telegram
+  #   bot_token: ${TELEGRAM_BOT_TOKEN}
+  #   chat_id: ${TELEGRAM_CHAT_ID}
+
+  # - type: slack
+  #   webhook_url: ${SLACK_WEBHOOK_URL}
+
+  # - type: discord
+  #   webhook_url: ${DISCORD_WEBHOOK_URL}
+
+feeds:
+  ## 20 Minuten
+  - https://partner-feeds.20min.ch/rss/20minuten/
+  - https://partner-feeds.20min.ch/rss/20minuten/schweiz
+  - https://partner-feeds.20min.ch/rss/20minuten/schweiz/wirtschaft
+  - https://partner-feeds.20min.ch/rss/20minuten/schweiz/politik
+  - https://partner-feeds.20min.ch/rss/20minuten/schweiz/finanzen
+  ## Blick
+  - https://www.blick.ch/schweiz/rss.xml
+  - https://www.blick.ch/rss.xml
+  - https://www.blick.ch/wirtschaft/rss.xml
+  - https://www.blick.ch/people-tv/rss.xml
+  - https://www.blick.ch/ausland/rss.xml
+  - https://www.blick.ch/politik/rss.xml
+  - https://www.blick.ch/sport/rss.xml
+  ## Luzerner Zeitung
+  - https://www.luzernerzeitung.ch/zentralschweiz.rss
+  - https://www.luzernerzeitung.ch/zentralschweiz/luzern.rss
+  - https://www.luzernerzeitung.ch/schweiz.rss
+  - https://www.luzernerzeitung.ch/international.rss
+  - https://www.luzernerzeitung.ch/wirtschaft.rss
+  - https://www.luzernerzeitung.ch/leben/ratgeber.rss
+  - https://www.luzernerzeitung.ch/meinung/leserbriefe.rss
+  - https://www.luzernerzeitung.ch/meinung/kommentare.rss
+  ## NZZ
+  - https://www.nzz.ch/startseite.rss
+  - https://www.nzz.ch/schweiz.rss
+  - https://www.nzz.ch/wirtschaft.rss
+  - https://www.nzz.ch/international.rss
+  - https://www.nzz.ch/recent.rss
+  ## Tages-Anzeiger
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/front
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/schweiz
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/wirtschaft
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/wirtschaft/recht-und-konsum
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/sonntagszeitung
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/panorama/vermischtes
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/ausland
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/ausland/europa
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/wirtschaft-news
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/news-heute
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/aktuell
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/wirtschaft/kurzmeldungen-wirtschaft
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/podcast/unter-verdacht
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/news
+  - https://partner-feeds.publishing.tamedia.ch/rss/tagesanzeiger/news-uebersicht

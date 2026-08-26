@@ -1,0 +1,30 @@
+# Standalone profile — a slim 5-feed starter list that also sends a
+# low-priority "still alive" ping each cycle. Copy to config.standalone.yaml.
+interval: 240
+max_entries: 15
+status_ping: true
+
+matching:
+  fields: [title]
+  mode: substring
+  case_sensitive: false
+  keywords:
+    - helvetus
+    - stralium
+
+storage:
+  path: seen.sqlite3
+  ttl_days: 30
+
+notifiers:
+  - type: ntfy
+    server: https://ntfy.sh
+    topic: ${NTFY_TOPIC}
+    default_priority: high
+
+feeds:
+  - https://partner-feeds.20min.ch/rss/20minuten/
+  - https://partner-feeds.20min.ch/rss/20minuten/schweiz
+  - https://partner-feeds.20min.ch/rss/20minuten/schweiz/wirtschaft
+  - https://partner-feeds.20min.ch/rss/20minuten/schweiz/politik
+  - https://partner-feeds.20min.ch/rss/20minuten/schweiz/finanzen
